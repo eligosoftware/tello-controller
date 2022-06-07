@@ -42,6 +42,8 @@ pip install Pillow
 #### !!Important!!
 On Windows PCs check firewall settings for TCP and UDP port blocking.
 
+![firewall_settings_1.png](https://github.com/eligosoftware/tello-controller/blob/main/readme_images/firewall_settings_1.png?raw=true)
+
 ## Running
 
 ```bash
