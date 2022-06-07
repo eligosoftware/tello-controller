@@ -41,3 +41,15 @@ pip install Pillow
 ```
 #### !!Important!!
 On Windows PCs check firewall settings for TCP and UDP port blocking.
+
+## Running
+
+```bash
+git clone https://github.com/eligosoftware/tello-controller.git
+cd tello-controller
+python main.py
+```
+
+## Settings
+
+In the Settings menu it is possible to set the drone IP address, movement and angle step values. The standard IP is 192.168.10.1 for the station mode. User should change the IP if the drone is in AP mode. The new settings take place only when the app is launched again.
