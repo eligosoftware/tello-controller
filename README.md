@@ -81,14 +81,14 @@ Control window enables Tello drone control using pre-configured buttons
 
 ![control.png](https://github.com/eligosoftware/tello-controller/blob/main/readme_images/control.png?raw=true)
 
-Up  - move drone vertically up by move step value
-Down  - move drone vertically down by move step value
-Left  - turn drone left (counter-clockwise) by angle step value
-Right  - turn drone right (clockwise) by angle step value
-Takeoff  - take off the drone from ground
+- Up  - move drone vertically up by move step value
+- Down  - move drone vertically down by move step value
+- Left  - turn drone left (counter-clockwise) by angle step value
+- Right  - turn drone right (clockwise) by angle step value
+- Takeoff  - take off the drone from ground
 
-Forward  - move drone forward by move step value
-Back  - move drone backward by move step value
-Move left  - move drone left by move step value
-Move right  - move drone right by move step value
-Land  - perform drone landing
+- Forward  - move drone forward by move step value
+- Back  - move drone backward by move step value
+- Move left  - move drone left by move step value
+- Move right  - move drone right by move step value
+- Land  - perform drone landing
