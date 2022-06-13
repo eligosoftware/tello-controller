@@ -5,7 +5,13 @@ from os.path import exists
 from PIL import ImageTk, Image
 import cv2
 from tkinter import messagebox
+from os import makedirs
+from datetime import datetime
+import threading
+from time import sleep
+import pyttsx3
 
+frame_resolution=None
 settings_window_open=False
 settingsWindow=None
 tello_connected=False
@@ -16,11 +22,28 @@ lmain = None
 tello_status=None
 settings_data=None
 
+		
+recording=False
 direction=0
+recording_label=None
+recording_label_text = None
 move_step=0
 angle_step=0
 
 root = None
+path_pictures="./media/pictures/"
+path_videos="./media/videos/"
+
+recording=False
+recording_label=None
+recording_label_text = None
+
+path_pictures="./media/pictures/"
+path_videos="./media/videos/"
+
+tts_engine=pyttsx3.init()
+tts_engine.setProperty('rate',120)
+tts_engine.setProperty('voice', 'english_rp+f3')
 
 def on_settings_closing():
 	global root
@@ -45,9 +68,21 @@ def write_settings(data):
 	with open('settings.json', 'w') as outfile:
 		outfile.write(json_string)
 
+def create_media_folder():
+	global path_pictures
+	global path_videos
+	
+	if not exists(path_pictures):
+		makedirs(path_pictures)
+	
+	if not exists(path_videos):
+		makedirs(path_videos)
+
+
 def connect_to_tello(tello_ip_value):
 	
 	global drone
+	global frame_resolution
 	res = False
 	try:
 		if (tello_ip_value=="192.168.10.1"):
@@ -57,16 +92,66 @@ def connect_to_tello(tello_ip_value):
 
 		res= drone.send_command("command")
 		
+		
 		if res == True:
 			drone.connect()
 			drone.stream_on()
-		
+			frame_resolution=(960,720)
+			drone.send_command("downvision 0")
 	except:
 		
 		drone = None
 		res = False
 	return res
 		
+		
+		
+def take_picture():
+	global drone
+	global path_pictures
+	while drone.read_frame() is not None:
+		frame=drone.read_frame()
+		write_image(path_pictures,frame)
+		messagebox.showinfo('Jetson Tools', 'Took image!')
+		break
+		
+		
+def start_video():
+	global recording
+	global recording_label
+	
+	recording_label_text.set("Recording...")
+	recording=True
+	threading.Thread(target=record_frames).start()
+
+def record_frames():
+	global img_array
+	global path_videos
+	global recording
+	global frame_resolution
+	
+	now = datetime.now() # current date and time
+	video_file='video_'+now.strftime("%Y%d%m%H%M%S")+'.avi'
+	out = cv2.VideoWriter(path_videos+video_file,cv2.VideoWriter_fourcc(*'DIVX'),30,frame_resolution)
+	while drone.read_frame() is not None:
+		frame=drone.read_frame()
+		out.write(frame)
+		sleep(0.01)
+		if not recording:
+			out.release()
+			break
+
+def stop_video():
+	global recording
+	global recording_label
+	recording=False
+	recording_label_text.set("")
+	
+def write_image(image_path, image):
+	now = datetime.now() # current date and time
+	image_file='image_'+now.strftime("%Y%d%m%H%M%S")+'.jpg'
+	cv2.imwrite(image_path+image_file,image)
+
 
 def settings_on_save(data):
 	global settingsWindow
@@ -95,6 +180,9 @@ def settings_on_save(data):
 
 def onControlPanel():
 	global root
+	global recording_label
+	global recording_label_text
+	recording_label_text = tk.StringVar()
 	
 	# Toplevel object which will
 	# be treated as a new window
@@ -105,7 +193,7 @@ def onControlPanel():
 	controlWindow.title("Control Panel")
 
 	# sets the geometry of toplevel
-	controlWindow.geometry("670x130")
+	controlWindow.geometry("750x270")
 	
 	up_button = tk.Button(controlWindow, text="Up", command=lambda: send_command("up"))
 	up_button.grid(column=1, row=0, sticky=tk.NW, padx=5, pady=5)
@@ -140,6 +228,36 @@ def onControlPanel():
 	back_button = tk.Button(controlWindow, text="Back", command=lambda: send_command("back"))
 	back_button.grid(column=5, row=2, sticky=tk.NW, padx=5, pady=5)
 	
+	
+	#################################
+	
+	flip_forward_button = tk.Button(controlWindow, text="Flip Forward", command=lambda: send_command("flip_f"))
+	flip_forward_button.grid(column=1, row=3, sticky=tk.NW, padx=5, pady=5)
+	
+	flip_left_button = tk.Button(controlWindow, text="Flip left", command=lambda: send_command("flip_l"))
+	flip_left_button.grid(column=0, row=4, sticky=tk.NW, padx=5, pady=5)
+	
+	flip_right_button = tk.Button(controlWindow, text="Flip right", command=lambda: send_command("flip_r"))
+	flip_right_button.grid(column=2, row=4, sticky=tk.NW, padx=5, pady=5)
+		
+	flip_backward_button = tk.Button(controlWindow, text="Flip Backward", command=lambda: send_command("flip_b"))
+	flip_backward_button.grid(column=1, row=5, sticky=tk.NW, padx=5, pady=5)
+	
+	################################
+	
+	take_picture_button = tk.Button(controlWindow, text="Take Picture", command=lambda: send_command("take_pic"))
+	take_picture_button.grid(column=3, row=3, sticky=tk.NW, padx=5, pady=5)
+	
+	start_video_button = tk.Button(controlWindow, text="Start Video", command=lambda: send_command("video_start"))
+	start_video_button.grid(column=3, row=4, sticky=tk.NW, padx=5, pady=5)
+	
+	stop_video_button = tk.Button(controlWindow, text="Stop Video", command=lambda: send_command("video_stop"))
+	stop_video_button.grid(column=3, row=5, sticky=tk.NW, padx=5, pady=5)
+	
+	#################################
+	
+	recording_label = tk.Label(controlWindow, fg='red', textvariable=recording_label_text)
+	recording_label.grid(column=4, row=5, sticky=tk.NW, padx=5, pady=5)
 	
 	img3 = tk.PhotoImage(file='./assets/logo3.png')
 	controlWindow.tk.call('wm', 'iconphoto', controlWindow._w, img3)
@@ -210,23 +328,36 @@ def onSettings():
 		
 		
 		settings_read=read_settings()
-		
+			
 		if not settings_read:
-			# set default valuesd
+			# set default values
 			tello_ip_entry.delete(0, tk.END)
 			tello_ip_entry.insert(0, default_tello_ip)
+			detection_object_entry.delete(0, tk.END)
+			detection_object_entry.insert(0, "person")
 			move_step_entry.delete(0, tk.END)
-			move_step_entry.insert(0, 0)
+			move_step_entry.insert(0, 30)
 			angle_step_entry.delete(0, tk.END)
-			angle_step_entry.insert(0, 0)
+			angle_step_entry.insert(0, 40)
 		else:
 			# set values from settings
 			tello_ip_entry.delete(0, tk.END)
-			tello_ip_entry.insert(0, settings_data["tello_ip"])
+			if "tello_ip" in settings_data:
+				tello_ip_entry.insert(0, settings_data["tello_ip"])
+			else:
+				tello_ip_entry.insert(0, default_tello_ip)
+				
 			move_step_entry.delete(0, tk.END)
-			move_step_entry.insert(0, settings_data["move_step"])
+			if "move_step" in settings_data:
+				move_step_entry.insert(0, settings_data["move_step"])
+			else:
+				move_step_entry.insert(0, 30)
 			angle_step_entry.delete(0, tk.END)
-			angle_step_entry.insert(0, settings_data["angle_step"])
+			if "angle_step" in settings_data:
+				angle_step_entry.insert(0, settings_data["angle_step"])
+			else:
+				angle_step_entry.insert(0, 40)
+		
 		
 		
 		# set on close event
@@ -244,8 +375,10 @@ def send_command(command):
 	global angle_step
 	
 	if (command=="takeoff"):
+		speak("Taking off")
 		drone.takeoff()
 	elif (command=="land"):
+		speak("Landing")
 		drone.land()
 	elif (command=="up"):
 		drone.move_up(move_step)
@@ -265,12 +398,33 @@ def send_command(command):
 		drone.move_forward(move_step)
 	elif (command=="back"):
 		drone.move_backward(move_step)
+	elif (command=="flip_f"):
+		drone.flip("forward")
+	elif (command=="flip_l"):
+		drone.flip("left")
+	elif (command=="flip_r"):
+		drone.flip("right")
+	elif (command=="flip_b"):
+		drone.flip("backward")	
+	elif (command=="take_pic"):
+		take_picture()
+	elif (command=="video_start"):
+		start_video()
+	elif (command=="video_stop"):
+		stop_video()
 
 def switch_camera():
-    global direction
-    global drone
-    direction+=1 
-    drone.send_command("downvision "+str(direction%2))
+	global direction
+	global drone
+	global frame_resolution
+	
+	direction+=1
+	
+	if direction%2 ==0:
+		frame_resolution=(960,720)
+	else:
+		frame_resolution=(320,240)
+	drone.send_command("downvision "+str(direction%2))
 
 # main window function
 def main():
@@ -334,8 +488,13 @@ def main():
 	img2 = tk.PhotoImage(file='./assets/logo2.png')
 	root.tk.call('wm', 'iconphoto', root._w, img2)
 	
+	create_media_folder()
 	root.mainloop()
 
+def speak(text):
+	global tts_engine
+	tts_engine.say(text)
+	tts_engine.runAndWait()
 
 # function for video streaming
 def video_stream():
