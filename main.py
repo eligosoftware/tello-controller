@@ -10,6 +10,9 @@ from datetime import datetime
 import threading
 from time import sleep
 import pyttsx3
+import sys
+import os
+import psutil
 
 frame_resolution=None
 settings_window_open=False
@@ -22,6 +25,7 @@ lmain = None
 tello_status=None
 settings_data=None
 
+imgbox=None
 		
 recording=False
 direction=0
@@ -29,6 +33,7 @@ recording_label=None
 recording_label_text = None
 move_step=0
 angle_step=0
+upd_bat_level=False
 
 root = None
 path_pictures="./media/pictures/"
@@ -53,6 +58,13 @@ def on_settings_closing():
 	settingsWindow.destroy()
 	
 	
+def on_root_closing():
+	global root
+	global upd_bat_level
+	upd_bat_level=False
+	root.destroy()
+
+
 def read_settings():
 	global settings_data
 	if (exists('settings.json')):
@@ -282,7 +294,7 @@ def onSettings():
 		settingsWindow.title("Settings")
 
 		# sets the geometry of toplevel
-		settingsWindow.geometry("380x150")
+		settingsWindow.geometry("450x150")
 	 
 		# A Label widget to show in toplevel
 		root.resizable(0, 0)
@@ -326,6 +338,8 @@ def onSettings():
 		save_button = tk.Button(settingsWindow, text="Save", command=lambda: settings_on_save(entry_fields))
 		save_button.grid(column=1, row=3, sticky=tk.NW, padx=5, pady=5)
 		
+		restart_button = tk.Button(settingsWindow, text="Restart", command=onRestart)
+		restart_button.grid(column=2, row=3, sticky=tk.NW, padx=5, pady=5)
 		
 		settings_read=read_settings()
 			
@@ -426,6 +440,28 @@ def switch_camera():
 		frame_resolution=(320,240)
 	drone.send_command("downvision "+str(direction%2))
 
+def update_battery():        
+	global drone
+	global tello_status
+	global upd_bat_level
+	while upd_bat_level:
+		bat_level=drone.get_battery()
+		tello_status['text']=f'Tello connected. Battery level {bat_level}'
+		sleep(5)
+        
+def onRestart():
+	global root
+	root.destroy()
+
+	try:
+		p = psutil.Process(os.getpid())
+		for handler in p.get_open_files() + p.connections():
+			os.close(handler.fd)
+	except Exception as e:
+		print(e)
+	python = sys.executable
+	os.execl(python, python, "main.py")
+
 # main window function
 def main():
 	global lmain
@@ -434,6 +470,8 @@ def main():
 	global drone
 	global move_step
 	global angle_step
+	global imgbox
+	global upd_bat_level
 	
 	try:
 		settings_read=read_settings()
@@ -448,14 +486,16 @@ def main():
 	
 	root = tk.Tk()
 	root.title('Jetson Tools')
-
-	root.geometry('960x720')
+	
+	root.attributes('-fullscreen', 1)
+	#root.geometry('960x720')
 	
 	menubar = tk.Menu(root)
 
 	filemenu = tk.Menu(menubar)
 	filemenu.add_command(label="Control panel",command=onControlPanel)
 	filemenu.add_command(label="Settings",command=onSettings)
+	filemenu.add_command(label="Restart",command=onRestart)
 	filemenu.add_command(label="Exit", command=root.destroy)
 
 	
@@ -465,10 +505,11 @@ def main():
 	
 	# Tello Status
 	tello_status = tk.Label(root, fg="green", text="")
-	tello_status.grid(column=0, row=0, sticky=tk.NW, padx=5, pady=5)
+	tello_status.pack()
 		
-	lmain = tk.Label(root)
-	lmain.grid(row=1, column=0, sticky=tk.NW, padx=5, pady=5)
+	lmain = tk.Canvas(root, highlightthickness=0)
+	lmain.pack(fill=tk.BOTH, expand=1)        
+	imgbox = lmain.create_image(277, 156, image=None, anchor='nw')
 	
 	if not settings_read:
 		tello_status.config(fg="red")
@@ -480,7 +521,10 @@ def main():
 		else:
 			
 			tello_status.config(fg="green")
-			tello_status['text']="Tello connected"
+			bat_level=drone.get_battery()
+			tello_status['text']=f'Tello connected. Battery level {bat_level}'
+			upd_bat_level=True
+			threading.Thread(target=update_battery).start()
 			video_stream()
 	
 	
@@ -489,6 +533,7 @@ def main():
 	root.tk.call('wm', 'iconphoto', root._w, img2)
 	
 	create_media_folder()
+	root.protocol("WM_DELETE_WINDOW", on_root_closing)
 	root.mainloop()
 
 def speak(text):
@@ -498,20 +543,18 @@ def speak(text):
 
 # function for video streaming
 def video_stream():
-	global pError, pError_fb
 	global lmain
-	global pid
-	global pError
 	global drone
-	
+	global imgbox
 	
 	if drone.read_frame() is not None:
 		frame = drone.read_frame()
 		cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+		w, h = 1366, 768		
 		img = Image.fromarray(cv2image)
-		imgtk = ImageTk.PhotoImage(image=img)
-		lmain.imgtk = imgtk
-		lmain.configure(image=imgtk)
+		image = ImageTk.PhotoImage(image=img.resize((w,h)))
+		lmain.itemconfig(imgbox, image=image)
+		lmain.image = image
 	lmain.after(1, video_stream) 
 
 connection_screen = tk.Tk()
