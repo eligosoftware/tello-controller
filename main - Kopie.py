@@ -13,6 +13,8 @@ import pyttsx3
 import sys
 import os
 import psutil
+import numpy as np
+
 
 frame_resolution=None
 settings_window_open=False
@@ -28,12 +30,30 @@ settings_data=None
 imgbox=None
 		
 recording=False
+line_following=False
 direction=0
 recording_label=None
 recording_label_text = None
 move_step=0
 angle_step=0
 upd_bat_level=False
+
+#hsvValues = [0,0,117,179,22,219]
+hsvValues = [0,0,188,179,33,245]
+#hsvValues = [0,0,0,255,255,255]
+
+sensors = 3
+threshold = 0.02
+
+#width, height = 480, 360 
+#width, height = 300, 225
+width, height = 960, 720
+
+sensitivity = 3
+weights=[-45, -30, 0, 30, 45]
+curve = 0
+fSpeed = 10
+
 
 root = None
 path_pictures="./media/pictures/"
@@ -123,11 +143,8 @@ def take_picture():
 	global path_pictures
 	while drone.read_frame() is not None:
 		frame=drone.read_frame()
-		#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-		frame = cv2.flip(frame,0)
 		write_image(path_pictures,frame)
-		#messagebox.showinfo('Jetson Tools', 'Took image!')
-		speak("I took a photo")
+		messagebox.showinfo('Jetson Tools', 'Took image!')
 		break
 		
 		
@@ -139,24 +156,17 @@ def start_video():
 	recording=True
 	threading.Thread(target=record_frames).start()
 
-def start_video_i():
-	global recording
-	speak("Recording started")
-	recording=True
-	threading.Thread(target=record_frames).start()
-
 def record_frames():
 	global img_array
 	global path_videos
 	global recording
 	global frame_resolution
+	
 	now = datetime.now() # current date and time
 	video_file='video_'+now.strftime("%Y%d%m%H%M%S")+'.avi'
 	out = cv2.VideoWriter(path_videos+video_file,cv2.VideoWriter_fourcc(*'DIVX'),30,frame_resolution)
 	while drone.read_frame() is not None:
 		frame=drone.read_frame()
-		#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-		frame = cv2.flip(frame,0)
 		out.write(frame)
 		sleep(0.01)
 		if not recording:
@@ -168,11 +178,6 @@ def stop_video():
 	global recording_label
 	recording=False
 	recording_label_text.set("")
-
-def stop_video_i():
-	global recording
-	recording=False
-	speak("Recording finished")
 	
 def write_image(image_path, image):
 	now = datetime.now() # current date and time
@@ -198,13 +203,11 @@ def settings_on_save(data):
 			data_to_save["angle_step"]=int(data["angle_step"].get().strip())
 		
 		write_settings(data_to_save)
-		#messagebox.showinfo('Jetson Tools', 'Settings saved!')
-		speak("I saved settings")
+		messagebox.showinfo('Jetson Tools', 'Settings saved!')
 	
 	except Exception as e:
 		print(e)
-		#messagebox.showerror('Jetson Tools', 'Couldn\'t save settings')
-		speak("I could not save settings")
+		messagebox.showerror('Jetson Tools', 'Couldn\'t save settings')
 
 
 def onControlPanel():
@@ -234,8 +237,6 @@ def onControlPanel():
 	left_button.grid(column=0, row=1, sticky=tk.NW, padx=5, pady=5)
 	
 	to_button = tk.Button(controlWindow, text="Take off", command=lambda: send_command("takeoff"))
-	#to_button = tk.Button(controlWindow, text="Take off")
-	#to_button.bind("<t>",send_command("takeoff"))
 	to_button.grid(column=1, row=1, sticky=tk.NW, padx=5, pady=5)
 	
 	right_button = tk.Button(controlWindow, text="Right", command=lambda: send_command("right"))
@@ -248,8 +249,6 @@ def onControlPanel():
 	lw_button.grid(column=4, row=1, sticky=tk.NW, padx=5, pady=5)
 	
 	land_button = tk.Button(controlWindow, text="Land", command=lambda: send_command("land"))
-	#land_button = tk.Button(controlWindow, text="Land")
-	#land_button.bind("<l>",send_command("land"))
 	land_button.grid(column=5, row=1, sticky=tk.NW, padx=5, pady=5)
 	
 	rw_button = tk.Button(controlWindow, text="Move right", command=lambda: send_command("move_right"))
@@ -286,95 +285,132 @@ def onControlPanel():
 	
 	stop_video_button = tk.Button(controlWindow, text="Stop Video", command=lambda: send_command("video_stop"))
 	stop_video_button.grid(column=3, row=5, sticky=tk.NW, padx=5, pady=5)
+
+	start_line_following_button = tk.Button(controlWindow, text="Start Line Following", command=lambda: send_command("line_follow_start"))
+	start_line_following_button.grid(column=4, row=4, sticky=tk.NW, padx=5, pady=5)
+	
+	stop_line_following_button = tk.Button(controlWindow, text="Stop Line Following", command=lambda: send_command("line_follow_stop"))
+	stop_line_following_button.grid(column=4, row=5, sticky=tk.NW, padx=5, pady=5)
 	
 	#################################
 	
 	recording_label = tk.Label(controlWindow, fg='red', textvariable=recording_label_text)
-	recording_label.grid(column=4, row=5, sticky=tk.NW, padx=5, pady=5)
-	
-	controlWindow.bind("<Key>", hotkey_listener)
+	recording_label.grid(column=5, row=5, sticky=tk.NW, padx=5, pady=5)
 	
 	img3 = tk.PhotoImage(file='./assets/logo3.png')
 	controlWindow.tk.call('wm', 'iconphoto', controlWindow._w, img3)
 
-def hotkey_listener2(event):
-	print(event.keycode)
+#####################
 
-def hotkey_listener(event):
-	global root
-	#print(event.keycode)
-	# w 87
-	# a 65
-	# s 83
-	# d 68
-	# t 84
-	# left 37
-	# up 38
-	# right 39
-	# down 40
-	# l 76
-	# c 67
-	# 1 49
-	# 2 50
-	# 3 51
-	# 4 52
-	# 5 53
-	# 6 54
-	# 7 55
-	# q 81
-	# r 82
-	# 8 56
-	# 9 57
+def thresholding(img):
+	hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+	lower = np.array([hsvValues[0],hsvValues[1],hsvValues[2]])
+	upper = np.array([hsvValues[3],hsvValues[4],hsvValues[5]])
+	mask = cv2.inRange(hsv,lower,upper)
+	return mask
 
-	match event.keycode:
-		case 87:
-			send_command("up")
-		case 65:
-			send_command("left")
-		case 83:
-			send_command("down")
-		case 68:
-			send_command("right")
-		case 84:
-			send_command("takeoff")
-		case 37:
-			send_command("move_left")
-		case 38:
-			send_command("forward")
-		case 39:
-			send_command("move_right")
-		case 40:
-			send_command("back")
-		case 76:
-			send_command("land")
-		case 67:
-			send_command("cc")
-		case 49:
-			send_command("flip_f")
-		case 50:
-			send_command("flip_l")
-		case 51:
-			send_command("flip_r")
-		case 52:
-			send_command("flip_b")
-		case 53:
-			send_command("take_pic")
-		case 54:
-			send_command("video_start_i")
-		case 55:
-			send_command("video_stop_i")
-		case 81:
-			send_command("land")
-			sleep(5)
-			root.destroy()
-		case 82:
-			onRestart()
-		case 56:
-			onControlPanel()
-		case 57:
-			onSettings()
+def getSensorOutput(imgThres,img_orig, sensors):
+	imgs = np.hsplit(imgThres, sensors)
+	totalPixels = (img_orig.shape[1]//sensors) * img_orig.shape[0]
+	senOut = []
+	for x,im in enumerate(imgs):
+		pixelCount = cv2.countNonZero(im)
+		if pixelCount > threshold * totalPixels:
+			senOut.append(1)
+		else:
+			senOut.append(0)
+		#cv2.imshow(str(x), im)
+	print(senOut)
+	return senOut
 
-			
+def getContours(imgThres,img):
+	contours, hierarchy = cv2.findContours(imgThres, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+	cx = 0
+	if len(contours) != 0:
+		biggest = max(contours, key = cv2.contourArea)
+		x, y, w, h = cv2.boundingRect(biggest)
+		cx = x + w // 2
+		cy = y + h // 2
+		#cv2.drawContours(img, contours, -1, (255,0,255), 7)
+		cv2.drawContours(img, biggest, -1, (255,0,255), 7)
+		cv2.circle(img, (cx,cy), 10, (0, 255, 0), cv2.FILLED)
+	
+	return cx
+
+
+def sendCommands(senOut,cx):
+	global curve
+	global drone
+	
+	#TRANSLATION
+	lr = (cx - width//2)//sensitivity
+	lr = int(np.clip(lr, -10, 10))
+
+	if lr < 2 and lr > -2:
+		lr=0
+	#ROTATION
+	stop = False
+	if senOut == [1,0,0]: curve = weights[0]
+	elif senOut == [1, 1, 0]: curve = weights[1]
+	elif senOut == [0, 1, 0]: curve = weights[2]
+	elif senOut == [0, 1, 1]: curve = weights[3]
+	elif senOut == [0, 0, 1]: curve = weights[4]
+
+	elif senOut == [0, 0, 0] or senOut == [1, 1, 1] or senOut == [1, 0, 1]: stop = True
+	
+	if stop:
+		print('Stop command received')
+		drone.joystick_control(0, 0, 0, 0)
+	else:
+		print(f'drone.joystick_control({lr} {fSpeed} {curve} 0)')
+		drone.joystick_control(lr, fSpeed, curve, 0)
+
+def line_follow_start():
+	global line_following
+	global recording_label
+	
+	recording_label_text.set("Following...")
+	line_following=True
+	threading.Thread(target=follow_the_line).start()
+
+def line_follow_stop():
+	global drone
+	
+	global line_following
+	global recording_label
+
+	line_following=False
+	recording_label_text.set("")
+
+	cv2.destroyAllWindows()
+	#drone.joystick_control(0, 0, 0, 0)
+
+def follow_the_line():
+	global line_following
+	global drone
+
+	while drone.read_frame() is not None:
+		img = drone.read_frame()
+		img = np.array(img)
+		img = cv2.resize(img, (width, height))
+		img = cv2.flip(img,0)
+	
+		imgThres = thresholding(img)
+	
+		cx = getContours(imgThres,img)
+		senOut = getSensorOutput(imgThres, img, sensors)
+		sendCommands(senOut,cx)
+		if not line_following:
+			break
+		cv2.imshow("Output", img)
+		#cv2.imwrite("Output.jpg", img)
+		cv2.imshow("Path", imgThres)
+		cv2.waitKey(1)
+	drone.joystick_control(0, 0, 0, 0)
+#####################
+
+
+
 # Settings window
 def onSettings():
 	global root
@@ -527,10 +563,10 @@ def send_command(command):
 		start_video()
 	elif (command=="video_stop"):
 		stop_video()
-	elif (command=="video_start_i"):
-		start_video_i()
-	elif (command=="video_stop_i"):
-		stop_video_i()
+	elif (command=="line_follow_start"):
+		line_follow_start()
+	elif (command=="line_follow_stop"):
+		line_follow_stop()
 
 def switch_camera():
 	global direction
@@ -565,7 +601,7 @@ def onRestart():
 	except Exception as e:
 		print(e)
 	python = sys.executable
-	os.execl(python, python, "main.py")
+	os.execl(python, python, "main - Kopie.py")
 
 # main window function
 def main():
@@ -634,8 +670,7 @@ def main():
 			video_stream()
 	
 	
-	root.bind("<Key>", hotkey_listener)
-
+	
 	img2 = tk.PhotoImage(file='./assets/logo2.png')
 	root.tk.call('wm', 'iconphoto', root._w, img2)
 	
@@ -657,8 +692,7 @@ def video_stream():
 	if drone.read_frame() is not None:
 		frame = drone.read_frame()
 		cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-		w, h = 1366, 768
-		cv2image = cv2.flip(cv2image,0)		
+		w, h = 1366, 768		
 		img = Image.fromarray(cv2image)
 		image = ImageTk.PhotoImage(image=img.resize((w,h)))
 		lmain.itemconfig(imgbox, image=image)
