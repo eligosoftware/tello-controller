@@ -1,3 +1,4 @@
+from glob import glob
 import tkinter as tk
 import json
 from tello import Tello
@@ -24,6 +25,12 @@ drone=None
 lmain = None
 tello_status=None
 settings_data=None
+
+unlock_password = "12345"
+keyboard_is_unlocked = False
+unlock_input = ""
+flip_image = True
+
 
 imgbox=None
 		
@@ -124,7 +131,8 @@ def take_picture():
 	while drone.read_frame() is not None:
 		frame=drone.read_frame()
 		#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-		frame = cv2.flip(frame,0)
+		if flip_image:
+			frame = cv2.flip(frame,0)
 		write_image(path_pictures,frame)
 		#messagebox.showinfo('Jetson Tools', 'Took image!')
 		speak("I took a photo")
@@ -156,7 +164,8 @@ def record_frames():
 	while drone.read_frame() is not None:
 		frame=drone.read_frame()
 		#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-		frame = cv2.flip(frame,0)
+		if flip_image:
+			frame = cv2.flip(frame,0)
 		out.write(frame)
 		sleep(0.01)
 		if not recording:
@@ -302,12 +311,17 @@ def hotkey_listener2(event):
 
 def hotkey_listener(event):
 	global root
-	#print(event.keycode)
+	global keyboard_is_unlocked
+	global unlock_password
+	global unlock_input
+	global flip_image
+
 	# w 87
 	# a 65
 	# s 83
 	# d 68
 	# t 84
+	# f 70
 	# left 37
 	# up 38
 	# right 39
@@ -325,56 +339,143 @@ def hotkey_listener(event):
 	# r 82
 	# 8 56
 	# 9 57
+	# F1 112
+	# F2 113
+	# F3 114
+	# F4 115
+	# F5 116
+	# F6 117
+	# F7 118
+	# F8 119
+	# F9 120
+
 
 	match event.keycode:
 		case 87:
-			send_command("up")
+			clear_unlock_pass()
+			send_command_with_lock_check("up")
 		case 65:
-			send_command("left")
+			clear_unlock_pass()
+			send_command_with_lock_check("left")
 		case 83:
-			send_command("down")
+			clear_unlock_pass()
+			send_command_with_lock_check("down")
 		case 68:
-			send_command("right")
+			clear_unlock_pass()
+			send_command_with_lock_check("right")
 		case 84:
-			send_command("takeoff")
+			clear_unlock_pass()
+			send_command_with_lock_check("takeoff")
 		case 37:
-			send_command("move_left")
+			clear_unlock_pass()
+			send_command_with_lock_check("move_left")
 		case 38:
-			send_command("forward")
+			clear_unlock_pass()
+			send_command_with_lock_check("forward")
 		case 39:
-			send_command("move_right")
+			clear_unlock_pass()
+			send_command_with_lock_check("move_right")
 		case 40:
-			send_command("back")
+			clear_unlock_pass()
+			send_command_with_lock_check("back")
+		case 70:
+			clear_unlock_pass()
+			if keyboard_is_unlocked:
+				flip_image = not flip_image
+			else:
+				speak("Keyboard is locked")
 		case 76:
-			send_command("land")
+			clear_unlock_pass()
+			send_command_with_lock_check("land")
 		case 67:
-			send_command("cc")
-		case 49:
-			send_command("flip_f")
-		case 50:
-			send_command("flip_l")
-		case 51:
-			send_command("flip_r")
-		case 52:
-			send_command("flip_b")
-		case 53:
-			send_command("take_pic")
-		case 54:
-			send_command("video_start_i")
-		case 55:
-			send_command("video_stop_i")
+			clear_unlock_pass()
+			send_command_with_lock_check("cc")
+		case 112:
+			clear_unlock_pass()
+			send_command_with_lock_check("flip_f")
+		case 113:
+			clear_unlock_pass()
+			send_command_with_lock_check("flip_l")
+		case 114:
+			clear_unlock_pass()
+			send_command_with_lock_check("flip_r")
+		case 115:
+			clear_unlock_pass()
+			send_command_with_lock_check("flip_b")
+		case 116:
+			clear_unlock_pass()
+			send_command_with_lock_check("take_pic")
+		case 117:
+			clear_unlock_pass()
+			send_command_with_lock_check("video_start_i")
+		case 118:
+			clear_unlock_pass()
+			send_command_with_lock_check("video_stop_i")
 		case 81:
-			send_command("land")
+			clear_unlock_pass()
+			send_command_with_lock_check("land")
 			sleep(5)
 			root.destroy()
 		case 82:
-			onRestart()
-		case 56:
-			onControlPanel()
-		case 57:
-			onSettings()
+			clear_unlock_pass()
+			if keyboard_is_unlocked:
+				onRestart()
+			else:
+				speak("Keyboard is locked")
+		case 119:
+			clear_unlock_pass()
+			if keyboard_is_unlocked:
+				onControlPanel()
+			else:
+				speak("Keyboard is locked!")
+		case 120:
+			clear_unlock_pass()
+			if keyboard_is_unlocked:
+				onSettings()
+			else:
+				speak("Keyboard is locked")
+		case 49:
+			unlock_input = unlock_input + "1"
+			check_unlock_input()
+		case 50:
+			unlock_input = unlock_input + "2"
+			check_unlock_input()
+		case 51:
+			unlock_input = unlock_input + "3"
+			check_unlock_input()
+		case 52:
+			unlock_input = unlock_input + "4"
+			check_unlock_input()
+		case 53:
+			unlock_input = unlock_input + "5"
+			check_unlock_input()
 
-			
+		case _:
+			clear_unlock_pass()
+
+def check_unlock_input():
+	global unlock_input
+	global unlock_password
+	global keyboard_is_unlocked
+	possible_combinations = ["1","12","123","1234", "12345"]
+
+	if unlock_input == unlock_password:
+		if keyboard_is_unlocked:
+			keyboard_is_unlocked = False
+			speak("Keyboard is locked")
+		else:
+			keyboard_is_unlocked = True
+			speak("Keyboard is unlocked")
+
+	if unlock_input not in possible_combinations:
+		unlock_input=""
+		speak("Wrong combination")
+
+
+def clear_unlock_pass():
+	global unlock_input
+	unlock_input=""	
+
 # Settings window
 def onSettings():
 	global root
@@ -448,8 +549,6 @@ def onSettings():
 			# set default values
 			tello_ip_entry.delete(0, tk.END)
 			tello_ip_entry.insert(0, default_tello_ip)
-			detection_object_entry.delete(0, tk.END)
-			detection_object_entry.insert(0, "person")
 			move_step_entry.delete(0, tk.END)
 			move_step_entry.insert(0, 30)
 			angle_step_entry.delete(0, tk.END)
@@ -483,11 +582,20 @@ def onSettings():
 		settings_window_open=True
 
 
+def send_command_with_lock_check(command):
+	global keyboard_is_unlocked
+	
+	if keyboard_is_unlocked:
+		send_command(command)
+	else:
+		speak("Keyboard is locked")
+
 
 def send_command(command):
 	global drone
 	global move_step
 	global angle_step
+
 	
 	if (command=="takeoff"):
 		speak("Taking off")
@@ -653,12 +761,14 @@ def video_stream():
 	global lmain
 	global drone
 	global imgbox
+	global flip_image
 	
 	if drone.read_frame() is not None:
 		frame = drone.read_frame()
 		cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
 		w, h = 1366, 768
-		cv2image = cv2.flip(cv2image,0)		
+		if flip_image:
+			cv2image = cv2.flip(cv2image,0)		
 		img = Image.fromarray(cv2image)
 		image = ImageTk.PhotoImage(image=img.resize((w,h)))
 		lmain.itemconfig(imgbox, image=image)
